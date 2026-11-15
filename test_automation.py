@@ -53,15 +53,23 @@ async def main():
                 )
                 continue
 
-            message = format_offer(offer)
+            try:    
 
-            await publish_message(bot, message)
+                message = format_offer(offer)
 
-            save_published_offer(offer_id)
+                await publish_message(bot, message)
 
-            logger.info(
-                f"Oferta publicada com sucesso: {offer['title']}"
-            )
+                save_published_offer(offer_id)
+
+                logger.info(
+                    f"Oferta publicada com sucesso: {offer['title']}"
+                )
+
+            except Exception:
+                logger.exception(
+                    f"Erro ao processar oferta: {offer['title']}"
+                )
+                continue
 
     finally:
         await bot.shutdown()

@@ -1,0 +1,11 @@
+
+[
+    {
+        "offer_id": "manual-001",
+        "title": "Fone Bluetooth Sem Fio",
+        "current_price": 49.90,
+        "original_price": 99.90,
+        "marketplace": "Teste",
+        "affiliate_url": "https://example.com"
+    }
+]

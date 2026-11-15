@@ -1,18 +1,16 @@
 
-from marketplaces.mock import get_offers as get_mock_offers
+from marketplaces.json_source import get_offers as get_json_offers
 
 
 def get_all_offers():
     """
-    Reúne ofertas de todos os marketplaces ativos.
-
-    Por enquanto, utiliza apenas dados fictícios.
+    Reúne ofertas cadastradas nas fontes disponíveis.
     """
 
     all_offers = []
 
-    # Ofertas fictícias para testes
-    mock_offers = get_mock_offers()
-    all_offers.extend(mock_offers)
+    # Ofertas cadastradas manualmente no JSON
+    json_offers = get_json_offers()
+    all_offers.extend(json_offers)
 
     return all_offers
