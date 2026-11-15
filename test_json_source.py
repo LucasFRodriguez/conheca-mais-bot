@@ -1,17 +1,15 @@
 
-from marketplaces.collector import get_all_offers
-from services.offer_validator import validate_offer
+from services.offer_processor import process_offers
 
 
-offers = get_all_offers()
+processed_offers = process_offers()
 
-print("Total de ofertas:", len(offers))
+print("\n" + "=" * 40)
+print("RESULTADO DO PROCESSAMENTO")
+print("=" * 40)
 
-for offer in offers:
-    try:
-        validate_offer(offer)
-
-        print(f"✅ Oferta válida: {offer['title']}")
-
-    except ValueError as error:
-        print(f"❌ Oferta inválida: {error}")
+for offer in processed_offers:
+    print(f"\nProduto: {offer['title']}")
+    print(f"ID: {offer['offer_id']}")
+    print("\nMensagem:")
+    print(offer["message"])
