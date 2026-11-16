@@ -1,75 +1,52 @@
 
 import os
-import asyncio
 
 from dotenv import load_dotenv
 from telegram import Bot
 
-from marketplaces.collector import get_all_offers
-from services.offer_formatter import format_offer
-from services.publisher import publish_message
-from services.offer_validator import validate_offer
-from services.deduplicator import (
-    is_already_published,
-    save_published_offer
-)
+from services.offer_processor import process_offers
+from services.offer_runner import run_offer_cycle
 
 from logger_config import logger
 
+
 load_dotenv()
+
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+
+# Publicação desativada por padrão.
+ENABLE_TELEGRAM_PUBLISHING = (
+    os.getenv("ENABLE_TELEGRAM_PUBLISHING", "false").lower() == "true"
+)
 
 
 async def main():
+
     logger.info("Iniciando automação do Conheça Mais.")
 
+    # Modo seguro: processa as ofertas, mas não publica.
+    if not ENABLE_TELEGRAM_PUBLISHING:
+
+        offers = process_offers()
+
+        logger.info(
+            f"Modo seguro ativado. {len(offers)} oferta(s) processada(s)."
+        )
+
+        logger.info("Nenhuma publicação foi realizada.")
+
+        return
+
+    # Verifica o token somente quando a publicação estiver habilitada.
     if not TOKEN:
-        logger.error("Token não encontrado no arquivo .env")
         raise ValueError("Token não encontrado no arquivo .env")
 
-    offers = get_all_offers()
-
-    logger.info(f"Total de ofertas encontradas: {len(offers)}")
-
     bot = Bot(token=TOKEN)
+
     await bot.initialize()
 
     try:
-        for offer in offers:
-            try:
-                validate_offer(offer)
-
-            except ValueError as error:
-                logger.warning(
-                    f"Oferta inválida: {offer.get('title', 'Sem título')} | Motivo: {error}"
-                )
-                continue
-
-            offer_id = offer["offer_id"]
-
-            if is_already_published(offer_id):
-                logger.info(
-                    f"Oferta ignorada (já publicada): {offer['title']}"
-                )
-                continue
-
-            try:    
-
-                message = format_offer(offer)
-
-                await publish_message(bot, message)
-
-                save_published_offer(offer_id)
-
-                logger.info(
-                    f"Oferta publicada com sucesso: {offer['title']}"
-                )
-
-            except Exception:
-                logger.exception(
-                    f"Erro ao processar oferta: {offer['title']}"
-                )
-                continue
+        await run_offer_cycle(bot)
 
     finally:
         await bot.shutdown()
@@ -78,4 +55,6 @@ async def main():
 
 
 if __name__ == "__main__":
+    import asyncio
+
     asyncio.run(main())
