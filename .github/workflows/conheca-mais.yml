@@ -1,0 +1,26 @@
+
+name: Conheca Mais - Teste na Nuvem
+
+on:
+  workflow_dispatch:
+
+jobs:
+  teste:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Baixar codigo do repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Verificar instalacao
+        run: |
+          python --version
+          python -c "import requests, telegram, dotenv; print('Dependencias instaladas com sucesso!')"
