@@ -97,3 +97,74 @@ jobs:
           SHOPEE_SECRET: ${{ secrets.SHOPEE_SECRET }}
           ENABLE_TELEGRAM_PUBLISHING: "false"
         run: python test_automation.py
+
+        
+      - name: Testar atualizacao do historico privado
+        env:
+          HISTORY_REPO_TOKEN: ${{ secrets.HISTORY_REPO_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os
+          import json
+          import base64
+          import requests
+
+          token = os.environ["HISTORY_REPO_TOKEN"]
+
+          url = (
+              "https://api.github.com/repos/"
+              "LucasFRodriguez/conheca-mais-dados/"
+              "contents/published_offers.json"
+          )
+
+          headers = {
+              "Authorization": f"Bearer {token}",
+              "Accept": "application/vnd.github+json"
+          }
+
+          # Recupera a versão atual do arquivo.
+          response = requests.get(
+              url,
+              headers=headers,
+              timeout=30
+          )
+
+          response.raise_for_status()
+
+          remote_file = response.json()
+
+          content = base64.b64decode(
+              remote_file["content"]
+          ).decode("utf-8-sig")
+
+          published = json.loads(content)
+
+          # Não altera os IDs existentes.
+          # Apenas regrava a mesma lista como teste.
+          new_content = base64.b64encode(
+              json.dumps(
+                  published,
+                  indent=4,
+                  ensure_ascii=False
+              ).encode("utf-8")
+          ).decode("ascii")
+
+          response = requests.put(
+              url,
+              headers=headers,
+              json={
+                  "message": "Teste de persistencia do historico",
+                  "content": new_content,
+                  "sha": remote_file["sha"]
+              },
+              timeout=30
+          )
+
+          print("Status da atualizacao:", response.status_code)
+
+          response.raise_for_status()
+
+          print("Historico atualizado com sucesso!")
+          print("Ofertas preservadas:", len(published))
+          PY
+
