@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Baixar codigo
+      - name: Baixar codigo do projeto
         uses: actions/checkout@v4
 
       - name: Configurar Python
@@ -27,20 +27,24 @@ jobs:
       - name: Instalar dependencias
         run: pip install -r requirements.txt
 
-        
-      - name: Testar acesso ao repositorio privado
+      - name: Recuperar historico privado
         env:
           HISTORY_REPO_TOKEN: ${{ secrets.HISTORY_REPO_TOKEN }}
         run: |
           python - <<'PY'
           import os
+          import json
+          import base64
+          from pathlib import Path
+
           import requests
 
           token = os.environ["HISTORY_REPO_TOKEN"]
 
           url = (
               "https://api.github.com/repos/"
-              "LucasFRodriguez/conheca-mais-dados"
+              "LucasFRodriguez/conheca-mais-dados/"
+              "contents/published_offers.json"
           )
 
           response = requests.get(
@@ -49,96 +53,21 @@ jobs:
                   "Authorization": f"Bearer {token}",
                   "Accept": "application/vnd.github+json"
               },
-              timeout=20
-          )
-
-          print("Status HTTP:", response.status_code)
-
-          if response.status_code == 200:
-              print("Acesso ao repositorio privado confirmado!")
-          else:
-              print("Acesso nao confirmado.")
-              raise RuntimeError("Falha ao acessar repositorio privado.")
-          PY
-
-      
-      - name: Testar gravacao no repositorio privado
-        env:
-          HISTORY_REPO_TOKEN: ${{ secrets.HISTORY_REPO_TOKEN }}
-        run: |
-          python - <<'PY'
-          import os
-          import base64
-          import requests
-
-          token = os.environ["HISTORY_REPO_TOKEN"]
-
-          url = (
-              "https://api.github.com/repos/"
-              "LucasFRodriguez/conheca-mais-dados/"
-              "contents/teste-conexao.txt"
-          )
-
-          headers = {
-              "Authorization": f"Bearer {token}",
-              "Accept": "application/vnd.github+json"
-          }
-
-          # Criar arquivo temporario
-          content = base64.b64encode(
-              b"Teste de gravacao do Conheca Mais"
-          ).decode("ascii")
-
-          response = requests.put(
-              url,
-              headers=headers,
-              json={
-                  "message": "Teste automatico de gravacao",
-                  "content": content
-              },
               timeout=30
           )
 
-          print("Status da gravacao:", response.status_code)
           response.raise_for_status()
 
-          sha = response.json()["content"]["sha"]
+          result = response.json()
 
-          print("Gravacao confirmada!")
+          content = base64.b64decode(
+              result["content"]
+          ).decode("utf-8-sig")
 
-          # Excluir o arquivo temporario
-          response = requests.delete(
-              url,
-              headers=headers,
-              json={
-                  "message": "Remover arquivo temporario",
-                  "sha": sha
-              },
-              timeout=30
-          )
-
-          print("Status da exclusao:", response.status_code)
-          response.raise_for_status()
-
-          print("Teste de leitura e gravacao aprovado!")
-          PY
-    
-
-
-      - name: Recuperar historico inicial
-        env:
-          PUBLISHED_OFFERS_JSON: ${{ secrets.PUBLISHED_OFFERS_JSON }}
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          content = os.environ.get("PUBLISHED_OFFERS_JSON", "")
           published = json.loads(content)
 
           if not isinstance(published, list):
-              raise ValueError("Historico precisa ser uma lista.")
+              raise ValueError("Historico nao e uma lista.")
 
           if not all(
               isinstance(item, str) and item
@@ -150,25 +79,21 @@ jobs:
           path.parent.mkdir(parents=True, exist_ok=True)
 
           path.write_text(
-              json.dumps(published, indent=2),
+              json.dumps(
+                  published,
+                  indent=4,
+                  ensure_ascii=False
+              ),
               encoding="utf-8"
           )
 
-          print("Historico recuperado com sucesso.")
-          print("Ofertas registradas:", len(published))
+          print("Historico privado recuperado!")
+          print("Ofertas ja publicadas:", len(published))
           PY
 
-      - name: Testar busca de ofertas da Shopee
+      - name: Testar ofertas da Shopee sem publicar
         env:
           SHOPEE_APP_ID: ${{ secrets.SHOPEE_APP_ID }}
           SHOPEE_SECRET: ${{ secrets.SHOPEE_SECRET }}
           ENABLE_TELEGRAM_PUBLISHING: "false"
         run: python test_automation.py
-
-      - name: Guardar historico de teste
-        uses: actions/upload-artifact@v4
-        with:
-          name: historico-${{ github.run_id }}
-          path: data/published_offers.json
-          retention-days: 2
-          if-no-files-found: error
