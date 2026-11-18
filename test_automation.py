@@ -1,8 +1,10 @@
 
+import asyncio
 import os
 
 from dotenv import load_dotenv
 from telegram import Bot
+from telegram.request import HTTPXRequest
 
 from services.offer_processor import process_offers
 from services.offer_runner import run_offer_cycle
@@ -12,49 +14,59 @@ from logger_config import logger
 
 load_dotenv()
 
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-
-# Publicação desativada por padrão.
-ENABLE_TELEGRAM_PUBLISHING = (
-    os.getenv("ENABLE_TELEGRAM_PUBLISHING", "false").lower() == "true"
-)
-
 
 async def main():
 
     logger.info("Iniciando automação do Conheça Mais.")
 
-    # Modo seguro: processa as ofertas, mas não publica.
-    if not ENABLE_TELEGRAM_PUBLISHING:
+    # Consulta a configuração em cada execução.
+    publishing_enabled = (
+        os.getenv(
+            "ENABLE_TELEGRAM_PUBLISHING",
+            "false"
+        ).strip().lower() == "true"
+    )
+
+    # Modo seguro: processa, mas não publica.
+    if not publishing_enabled:
 
         offers = process_offers()
 
         logger.info(
-            f"Modo seguro ativado. {len(offers)} oferta(s) processada(s)."
+            "Modo seguro ativado. %d oferta(s) processada(s).",
+            len(offers)
         )
 
         logger.info("Nenhuma publicação foi realizada.")
 
         return
 
-    # Verifica o token somente quando a publicação estiver habilitada.
-    if not TOKEN:
-        raise ValueError("Token não encontrado no arquivo .env")
+    # Só busca o token quando a publicação está habilitada.
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
 
-    bot = Bot(token=TOKEN)
+    if not token:
+        raise ValueError(
+            "Token do Telegram não encontrado no .env."
+        )
 
-    await bot.initialize()
+    # Configuração que funcionou no teste manual.
+    request = HTTPXRequest(
+        connect_timeout=30.0,
+        read_timeout=30.0,
+        write_timeout=30.0
+    )
 
-    try:
+    bot = Bot(
+        token=token,
+        request=request
+    )
+
+    # Inicializa o bot e encerra a conexão corretamente.
+    async with bot:
         await run_offer_cycle(bot)
-
-    finally:
-        await bot.shutdown()
 
     logger.info("Automação finalizada.")
 
 
 if __name__ == "__main__":
-    import asyncio
-
     asyncio.run(main())

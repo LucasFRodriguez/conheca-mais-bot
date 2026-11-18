@@ -4,3 +4,6 @@ __pycache__/
 *.py[cod]
 logs/
 *.log
+# Histórico local de ofertas publicadas
+data/published_offers.json
+data/published_offers.corrompido.bak

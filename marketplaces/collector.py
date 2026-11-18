@@ -1,16 +1,35 @@
 
-from marketplaces.json_source import get_offers as get_json_offers
+import logging
+
+from marketplaces.shopee import get_offers as get_shopee_offers
+
+
+logger = logging.getLogger(__name__)
 
 
 def get_all_offers():
     """
-    Reúne ofertas cadastradas nas fontes disponíveis.
+    Coleta somente ofertas reais da Shopee.
+
+    O JSON de testes não participa da publicação.
     """
 
-    all_offers = []
+    offers = []
 
-    # Ofertas cadastradas manualmente no JSON
-    json_offers = get_json_offers()
-    all_offers.extend(json_offers)
+    try:
+        shopee_offers = get_shopee_offers(limit=10)
 
-    return all_offers
+        offers.extend(shopee_offers)
+
+        logger.info(
+            "Shopee: %d ofertas coletadas.",
+            len(shopee_offers)
+        )
+
+    except Exception as error:
+        logger.error(
+            "Falha ao buscar ofertas da Shopee: %s",
+            type(error).__name__
+        )
+
+    return offers

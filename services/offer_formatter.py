@@ -87,7 +87,7 @@ def format_offer(offer):
 
     else:
         message += (
-            f"💰 Preço: {format_price(current_price)}\n\n"
+            f"💰 A partir de: {format_price(current_price)}\n\n"
         )
 
     # Finalização da mensagem

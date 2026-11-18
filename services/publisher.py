@@ -6,23 +6,25 @@ from telegram.error import NetworkError, RetryAfter
 
 from logger_config import logger
 
+
 CHANNEL_ID = "@conhecamaisofertas"
 
 MAX_ATTEMPTS = 3
 
 
 async def publish_message(bot: Bot, message: str):
-    """Publica uma mensagem no canal com tentativas automáticas."""
+    """Publica uma mensagem no Telegram."""
 
     for attempt in range(1, MAX_ATTEMPTS + 1):
 
         try:
-            await bot.send_message(
+            sent_message = await bot.send_message(
                 chat_id=CHANNEL_ID,
                 text=message
             )
 
-            return
+            # Retorna a mensagem confirmada pelo Telegram.
+            return sent_message
 
         except RetryAfter as error:
 
@@ -32,27 +34,23 @@ async def publish_message(bot: Bot, message: str):
             wait_time = float(error.retry_after) + 1
 
             logger.warning(
-                f"Telegram solicitou espera. "
-                f"Tentativa {attempt}/{MAX_ATTEMPTS}. "
-                f"Aguardando {wait_time} segundos."
+                "Telegram solicitou espera. "
+                "Tentativa %d/%d. Aguardando %.1f segundos.",
+                attempt,
+                MAX_ATTEMPTS,
+                wait_time
             )
 
             await asyncio.sleep(wait_time)
 
         except NetworkError:
 
-            if attempt == MAX_ATTEMPTS:
-                logger.exception(
-                    "Falha de conexão após todas as tentativas."
-                )
-                raise
-
-            wait_time = 2 ** attempt
-
-            logger.warning(
-                f"Falha de conexão. "
-                f"Tentativa {attempt}/{MAX_ATTEMPTS}. "
-                f"Nova tentativa em {wait_time} segundos."
+            # Não repetimos automaticamente porque
+            # o Telegram pode ter recebido a mensagem.
+            logger.exception(
+                "Falha de conexão no envio. "
+                "Resultado da publicação incerto; "
+                "reenvio automático cancelado."
             )
 
-            await asyncio.sleep(wait_time)
+            raise
