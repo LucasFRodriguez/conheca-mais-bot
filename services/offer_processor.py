@@ -9,7 +9,7 @@ from services.offer_filter import filter_offers
 
 
 # Quantidade máxima de ofertas selecionadas por ciclo
-MAX_OFFERS_PER_CYCLE = 3
+MAX_OFFERS_PER_CYCLE = 1
 
 
 def process_offers():
