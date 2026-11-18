@@ -27,6 +27,41 @@ jobs:
       - name: Instalar dependencias
         run: pip install -r requirements.txt
 
+        
+      - name: Testar acesso ao repositorio privado
+        env:
+          HISTORY_REPO_TOKEN: ${{ secrets.HISTORY_REPO_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os
+          import requests
+
+          token = os.environ["HISTORY_REPO_TOKEN"]
+
+          url = (
+              "https://api.github.com/repos/"
+              "LucasFRodriguez/conheca-mais-dados"
+          )
+
+          response = requests.get(
+              url,
+              headers={
+                  "Authorization": f"Bearer {token}",
+                  "Accept": "application/vnd.github+json"
+              },
+              timeout=20
+          )
+
+          print("Status HTTP:", response.status_code)
+
+          if response.status_code == 200:
+              print("Acesso ao repositorio privado confirmado!")
+          else:
+              print("Acesso nao confirmado.")
+              raise RuntimeError("Falha ao acessar repositorio privado.")
+          PY
+
+
       - name: Recuperar historico inicial
         env:
           PUBLISHED_OFFERS_JSON: ${{ secrets.PUBLISHED_OFFERS_JSON }}
