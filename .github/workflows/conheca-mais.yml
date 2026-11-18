@@ -77,12 +77,14 @@ jobs:
           print("IDs carregados:", len(published))
           PY
 
-      - name: Executar bot em modo seguro
+      - name: Publicar uma oferta real no Telegram
         env:
           SHOPEE_APP_ID: ${{ secrets.SHOPEE_APP_ID }}
           SHOPEE_SECRET: ${{ secrets.SHOPEE_SECRET }}
-          ENABLE_TELEGRAM_PUBLISHING: "false"
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          ENABLE_TELEGRAM_PUBLISHING: "true"
         run: python test_automation.py
+
 
       - name: Sincronizar historico com repositorio privado
         env:
