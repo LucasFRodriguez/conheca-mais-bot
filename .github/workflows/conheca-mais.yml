@@ -61,6 +61,69 @@ jobs:
               raise RuntimeError("Falha ao acessar repositorio privado.")
           PY
 
+      
+      - name: Testar gravacao no repositorio privado
+        env:
+          HISTORY_REPO_TOKEN: ${{ secrets.HISTORY_REPO_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os
+          import base64
+          import requests
+
+          token = os.environ["HISTORY_REPO_TOKEN"]
+
+          url = (
+              "https://api.github.com/repos/"
+              "LucasFRodriguez/conheca-mais-dados/"
+              "contents/teste-conexao.txt"
+          )
+
+          headers = {
+              "Authorization": f"Bearer {token}",
+              "Accept": "application/vnd.github+json"
+          }
+
+          # Criar arquivo temporario
+          content = base64.b64encode(
+              b"Teste de gravacao do Conheca Mais"
+          ).decode("ascii")
+
+          response = requests.put(
+              url,
+              headers=headers,
+              json={
+                  "message": "Teste automatico de gravacao",
+                  "content": content
+              },
+              timeout=30
+          )
+
+          print("Status da gravacao:", response.status_code)
+          response.raise_for_status()
+
+          sha = response.json()["content"]["sha"]
+
+          print("Gravacao confirmada!")
+
+          # Excluir o arquivo temporario
+          response = requests.delete(
+              url,
+              headers=headers,
+              json={
+                  "message": "Remover arquivo temporario",
+                  "sha": sha
+              },
+              timeout=30
+          )
+
+          print("Status da exclusao:", response.status_code)
+          response.raise_for_status()
+
+          print("Teste de leitura e gravacao aprovado!")
+          PY
+    
+
 
       - name: Recuperar historico inicial
         env:
