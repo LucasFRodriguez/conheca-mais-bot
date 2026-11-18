@@ -3,29 +3,32 @@ import os
 import json
 import time
 import hashlib
-import requests
+import logging
 
+import requests
 from dotenv import load_dotenv
+
 from marketplaces.shopee_adapter import adapt_shopee_product
 
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
 API_URL = "https://open-api.affiliate.shopee.com.br/graphql"
 
 
-def get_offers(keyword=None, limit=3):
+def get_offers(keyword=None, limit=10, page=1):
     """
     Busca produtos reais na Shopee Open API.
 
-    Retorna uma lista de ofertas adaptadas
-    para o padrão utilizado pelo Conheça Mais.
+    keyword: palavra-chave opcional
+    limit: quantidade máxima de produtos
+    page: página solicitada
 
-    O parâmetro keyword fica reservado para
-    futuras pesquisas por palavra-chave.
+    Retorna ofertas adaptadas ao Conheça Mais.
     """
 
-    # 1. Verificar as credenciais
     app_id = os.getenv("SHOPEE_APP_ID")
     secret = os.getenv("SHOPEE_SECRET")
 
@@ -34,19 +37,52 @@ def get_offers(keyword=None, limit=3):
             "Credenciais da Shopee não encontradas no .env."
         )
 
-    # 2. Validar o limite da consulta
     if type(limit) is not int or not 1 <= limit <= 20:
         raise ValueError(
-            "O limite deve ser um número entre 1 e 20."
+            "O limite deve estar entre 1 e 20."
         )
 
-    # 3. Consulta GraphQL
-    # Usamos o formato simples que já funcionou.
+    if type(page) is not int or page < 1:
+        raise ValueError(
+            "A página deve ser um número inteiro positivo."
+        )
+
+    # Monta os parâmetros da consulta GraphQL.
+    if keyword is not None:
+        if not isinstance(keyword, str) or not keyword.strip():
+            raise ValueError(
+                "Informe uma palavra-chave válida."
+            )
+
+        if len(keyword) > 100:
+            raise ValueError(
+                "A palavra-chave deve ter até 100 caracteres."
+            )
+
+        keyword_value = json.dumps(
+            keyword.strip(),
+            ensure_ascii=False
+        )
+
+        search_parameters = (
+            f"keyword: {keyword_value}\n"
+            f"            sortType: 1\n"
+            f"            page: {page}\n"
+            f"            limit: {limit}"
+        )
+
+    else:
+        # Sem palavra-chave, fazemos a consulta mais simples.
+        # Ela já funcionou nos nossos testes anteriores.
+        search_parameters = (
+            f"page: {page}\n"
+            f"            limit: {limit}"
+        )
+
     query = """
     {
         productOfferV2(
-            page: 1
-            limit: %d
+            %s
         ) {
             nodes {
                 itemId
@@ -62,21 +98,23 @@ def get_offers(keyword=None, limit=3):
                 productLink
                 offerLink
             }
+            pageInfo {
+                hasNextPage
+            }
         }
     }
-    """ % limit
+    """ % search_parameters
 
-    # 4. Preparar o corpo da requisição
+    # O corpo enviado deve ser exatamente o mesmo
+    # usado no cálculo da assinatura SHA256.
     payload = json.dumps(
         {"query": query},
         separators=(",", ":"),
         ensure_ascii=False
     )
 
-    # 5. Criar o timestamp
     timestamp = str(int(time.time()))
 
-    # 6. Gerar assinatura SHA256
     signature_text = (
         app_id + timestamp + payload + secret
     )
@@ -85,7 +123,6 @@ def get_offers(keyword=None, limit=3):
         signature_text.encode("utf-8")
     ).hexdigest()
 
-    # 7. Preparar os cabeçalhos
     headers = {
         "Content-Type": "application/json",
         "Authorization": (
@@ -95,7 +132,7 @@ def get_offers(keyword=None, limit=3):
         )
     }
 
-    # 8. Consultar a API
+    # Consulta a API da Shopee.
     response = requests.post(
         API_URL,
         headers=headers,
@@ -103,19 +140,14 @@ def get_offers(keyword=None, limit=3):
         timeout=30
     )
 
-    # 9. Verificar erros HTTP
     response.raise_for_status()
 
-    # 10. Interpretar a resposta JSON
     result = response.json()
 
-    # 11. Verificar erros GraphQL
+    # Não trata erros GraphQL como listas vazias.
     if result.get("errors"):
         messages = [
-            error.get(
-                "message",
-                "Erro desconhecido"
-            )
+            error.get("message", "Erro desconhecido")
             for error in result["errors"]
         ]
 
@@ -124,10 +156,9 @@ def get_offers(keyword=None, limit=3):
             + "; ".join(messages)
         )
 
-    # 12. Extrair os produtos
-    data = result.get("data") or {}
-
-    connection = data.get("productOfferV2")
+    connection = (
+        result.get("data") or {}
+    ).get("productOfferV2")
 
     if connection is None:
         raise RuntimeError(
@@ -136,34 +167,39 @@ def get_offers(keyword=None, limit=3):
 
     products = connection.get("nodes") or []
 
-    # 13. Adaptar os produtos
+    # Informações de paginação retornadas pela Shopee.
+    page_info = connection.get("pageInfo") or {}
+
+    print("Página solicitada:", page)
+    print(
+        "Próxima página disponível:",
+        page_info.get("hasNextPage")
+    )
+    print("Produtos recebidos:", len(products))
+
     offers = []
 
     for product in products:
         try:
             offer = adapt_shopee_product(product)
 
-            # Não aceitar ofertas sem link de afiliado
             affiliate_url = offer.get("affiliate_url")
 
             if (
                 not isinstance(affiliate_url, str)
-                or not affiliate_url.startswith(
-                    ("https://", "http://")
-                )
+                or not affiliate_url.startswith("https://")
             ):
-                print(
-                    "Produto ignorado: "
-                    "link de afiliado inválido."
+                logger.warning(
+                    "Produto ignorado: link de afiliado inválido."
                 )
                 continue
 
             offers.append(offer)
 
         except (ValueError, TypeError) as error:
-            print(
-                f"Produto ignorado: {error}"
+            logger.warning(
+                "Produto ignorado: %s",
+                error
             )
 
-    # 14. Devolver as ofertas ao sistema
     return offers
