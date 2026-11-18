@@ -16,13 +16,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Baixar codigo do projeto
+      - name: Baixar codigo
         uses: actions/checkout@v4
 
       - name: Configurar Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: "3.13"
 
       - name: Instalar dependencias
         run: pip install -r requirements.txt
@@ -36,80 +36,7 @@ jobs:
           import json
           import base64
           from pathlib import Path
-
           import requests
-
-          token = os.environ["HISTORY_REPO_TOKEN"]
-
-          url = (
-              "https://api.github.com/repos/"
-              "LucasFRodriguez/conheca-mais-dados/"
-              "contents/published_offers.json"
-          )
-
-          response = requests.get(
-              url,
-              headers={
-                  "Authorization": f"Bearer {token}",
-                  "Accept": "application/vnd.github+json"
-              },
-              timeout=30
-          )
-
-          response.raise_for_status()
-
-          result = response.json()
-
-          content = base64.b64decode(
-              result["content"]
-          ).decode("utf-8-sig")
-
-          published = json.loads(content)
-
-          if not isinstance(published, list):
-              raise ValueError("Historico nao e uma lista.")
-
-          if not all(
-              isinstance(item, str) and item
-              for item in published
-          ):
-              raise ValueError("Historico contem IDs invalidos.")
-
-          path = Path("data/published_offers.json")
-          path.parent.mkdir(parents=True, exist_ok=True)
-
-          path.write_text(
-              json.dumps(
-                  published,
-                  indent=4,
-                  ensure_ascii=False
-              ),
-              encoding="utf-8"
-          )
-
-          print("Historico privado recuperado!")
-          print("Ofertas ja publicadas:", len(published))
-          PY
-
-      - name: Testar ofertas da Shopee sem publicar
-        env:
-          SHOPEE_APP_ID: ${{ secrets.SHOPEE_APP_ID }}
-          SHOPEE_SECRET: ${{ secrets.SHOPEE_SECRET }}
-          ENABLE_TELEGRAM_PUBLISHING: "false"
-        run: python test_automation.py
-
-        
-      - name: Testar atualizacao do historico privado
-        env:
-          HISTORY_REPO_TOKEN: ${{ secrets.HISTORY_REPO_TOKEN }}
-        run: |
-          python - <<'PY'
-          import os
-          import json
-          import base64
-          import requests
-
-          token = os.environ["HISTORY_REPO_TOKEN"]
 
           url = (
               "https://api.github.com/repos/"
@@ -118,53 +45,131 @@ jobs:
           )
 
           headers = {
-              "Authorization": f"Bearer {token}",
+              "Authorization": "Bearer " + os.environ["HISTORY_REPO_TOKEN"],
               "Accept": "application/vnd.github+json"
           }
 
-          # Recupera a versão atual do arquivo.
           response = requests.get(
-              url,
-              headers=headers,
-              timeout=30
+              url, headers=headers, timeout=30
           )
-
           response.raise_for_status()
 
-          remote_file = response.json()
-
           content = base64.b64decode(
-              remote_file["content"]
+              response.json()["content"]
           ).decode("utf-8-sig")
 
           published = json.loads(content)
 
-          # Não altera os IDs existentes.
-          # Apenas regrava a mesma lista como teste.
-          new_content = base64.b64encode(
-              json.dumps(
-                  published,
-                  indent=4,
-                  ensure_ascii=False
-              ).encode("utf-8")
-          ).decode("ascii")
+          if not isinstance(published, list) or not all(
+              isinstance(item, str) and item
+              for item in published
+          ):
+              raise ValueError("Historico privado invalido.")
 
-          response = requests.put(
-              url,
-              headers=headers,
-              json={
-                  "message": "Teste de persistencia do historico",
-                  "content": new_content,
-                  "sha": remote_file["sha"]
-              },
-              timeout=30
+          path = Path("data/published_offers.json")
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(
+              json.dumps(published, indent=4, ensure_ascii=False),
+              encoding="utf-8"
           )
 
-          print("Status da atualizacao:", response.status_code)
-
-          response.raise_for_status()
-
-          print("Historico atualizado com sucesso!")
-          print("Ofertas preservadas:", len(published))
+          print("Historico privado recuperado!")
+          print("IDs carregados:", len(published))
           PY
 
+      - name: Executar bot em modo seguro
+        env:
+          SHOPEE_APP_ID: ${{ secrets.SHOPEE_APP_ID }}
+          SHOPEE_SECRET: ${{ secrets.SHOPEE_SECRET }}
+          ENABLE_TELEGRAM_PUBLISHING: "false"
+        run: python test_automation.py
+
+      - name: Sincronizar historico com repositorio privado
+        env:
+          HISTORY_REPO_TOKEN: ${{ secrets.HISTORY_REPO_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os
+          import json
+          import base64
+          from pathlib import Path
+          import requests
+
+          url = (
+              "https://api.github.com/repos/"
+              "LucasFRodriguez/conheca-mais-dados/"
+              "contents/published_offers.json"
+          )
+
+          headers = {
+              "Authorization": "Bearer " + os.environ["HISTORY_REPO_TOKEN"],
+              "Accept": "application/vnd.github+json"
+          }
+
+          # Historico que o bot deixou no disco.
+          local = json.loads(
+              Path("data/published_offers.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+
+          # Recupera a versao mais recente do GitHub.
+          response = requests.get(
+              url, headers=headers, timeout=30
+          )
+          response.raise_for_status()
+
+          remote_file = response.json()
+          remote = json.loads(
+              base64.b64decode(
+                  remote_file["content"]
+              ).decode("utf-8-sig")
+          )
+
+          for name, items in [
+              ("local", local),
+              ("remoto", remote)
+          ]:
+              if not isinstance(items, list) or not all(
+                  isinstance(item, str) and item
+                  for item in items
+              ):
+                  raise ValueError(
+                      f"Historico {name} invalido."
+                  )
+
+          # Nunca apaga IDs do historico remoto.
+          if not set(remote).issubset(set(local)):
+              raise RuntimeError(
+                  "Historico remoto mudou. "
+                  "Sincronizacao interrompida."
+              )
+
+          if set(local) == set(remote):
+              print("Historico ja esta atualizado.")
+              print("IDs preservados:", len(remote))
+          else:
+              content = base64.b64encode(
+                  json.dumps(
+                      local,
+                      indent=4,
+                      ensure_ascii=False
+                  ).encode("utf-8")
+              ).decode("ascii")
+
+              response = requests.put(
+                  url,
+                  headers=headers,
+                  json={
+                      "message": "Atualiza historico de ofertas",
+                      "content": content,
+                      "sha": remote_file["sha"]
+                  },
+                  timeout=30
+              )
+
+              response.raise_for_status()
+
+              print("Historico sincronizado!")
+              print("IDs registrados:", len(local))
+          PY
