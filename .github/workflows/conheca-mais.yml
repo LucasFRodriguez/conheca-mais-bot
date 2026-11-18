@@ -4,6 +4,13 @@ name: Conheca Mais - Teste na Nuvem
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: conheca-mais-ofertas
+  cancel-in-progress: false
+
 jobs:
   teste:
     runs-on: ubuntu-latest
@@ -20,9 +27,50 @@ jobs:
       - name: Instalar dependencias
         run: pip install -r requirements.txt
 
+      - name: Recuperar historico inicial
+        env:
+          PUBLISHED_OFFERS_JSON: ${{ secrets.PUBLISHED_OFFERS_JSON }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          content = os.environ.get("PUBLISHED_OFFERS_JSON", "")
+          published = json.loads(content)
+
+          if not isinstance(published, list):
+              raise ValueError("Historico precisa ser uma lista.")
+
+          if not all(
+              isinstance(item, str) and item
+              for item in published
+          ):
+              raise ValueError("Historico contem IDs invalidos.")
+
+          path = Path("data/published_offers.json")
+          path.parent.mkdir(parents=True, exist_ok=True)
+
+          path.write_text(
+              json.dumps(published, indent=2),
+              encoding="utf-8"
+          )
+
+          print("Historico recuperado com sucesso.")
+          print("Ofertas registradas:", len(published))
+          PY
+
       - name: Testar busca de ofertas da Shopee
         env:
           SHOPEE_APP_ID: ${{ secrets.SHOPEE_APP_ID }}
           SHOPEE_SECRET: ${{ secrets.SHOPEE_SECRET }}
           ENABLE_TELEGRAM_PUBLISHING: "false"
         run: python test_automation.py
+
+      - name: Guardar historico de teste
+        uses: actions/upload-artifact@v4
+        with:
+          name: historico-${{ github.run_id }}
+          path: data/published_offers.json
+          retention-days: 2
+          if-no-files-found: error
