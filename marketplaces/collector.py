@@ -14,7 +14,7 @@ SEARCHES = [
         "name": "Produtos gerais",
         "keyword": None,
         "page": 1,
-        "limit": 10,
+        "limit": 20,
     },
     {
         "name": "Fones - pagina 1",
