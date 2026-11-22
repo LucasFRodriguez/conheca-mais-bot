@@ -1,4 +1,7 @@
 
+import re
+import unicodedata
+
 from marketplaces.collector import get_all_offers
 
 from services.offer_validator import validate_offer
@@ -8,46 +11,244 @@ from services.offer_scorer import score_offer
 from services.offer_filter import filter_offers
 
 
-# Quantidade máxima de ofertas selecionadas por ciclo
+# Quantidade maxima de ofertas por ciclo
 MAX_OFFERS_PER_CYCLE = 2
 
 
+# Palavras usadas para identificar nichos.
+CATEGORY_KEYWORDS = {
+    "Suplementos": [
+        "creatina",
+        "whey",
+        "suplemento",
+        "proteina",
+        "pre treino",
+        "coqueteleira",
+    ],
+    "Eletronicos": [
+        "fone",
+        "headset",
+        "bluetooth",
+        "mouse",
+        "teclado",
+        "smartwatch",
+        "power bank",
+        "carregador",
+        "memoria ram",
+        "iphone",
+        "capinha",
+        "cabo usb",
+        "caixa de som",
+    ],
+    "Cozinha": [
+        "marmita",
+        "marmitas",
+        "potestravas",
+        "pote",
+        "panela",
+        "frigideira",
+        "omeleteira",
+        "processador",
+        "triturador",
+        "tempero",
+        "caneca",
+        "copo termico",
+        "garrafa termica",
+        "utensilio",
+        "cozinha",
+    ],
+    "Beleza": [
+        "shampoo",
+        "hidratante",
+        "perfume",
+        "body splash",
+        "maquina de cortar cabelo",
+        "aparador de barba",
+        "maquiagem",
+        "skincare",
+    ],
+    "Moda": [
+        "regata",
+        "cropped",
+        "short",
+        "bermuda",
+        "calca",
+        "jaqueta",
+        "chinelo",
+        "sandalia",
+        "bota",
+        "vestido",
+        "oculos de sol",
+        "relogio",
+        "macaquinho fitness",
+    ],
+    "Ferramentas": [
+        "parafusadeira",
+        "furadeira",
+        "chave catraca",
+        "soquete",
+        "jogo de ferramentas",
+        "kit de ferramentas",
+        "compressor",
+        "calibrador",
+    ],
+    "Automotivo": [
+        "vonixx",
+        "lavagem automotiva",
+        "estetica automotiva",
+        "pneu pretinho",
+        "limpeza automotiva",
+    ],
+    "Casa e decoracao": [
+        "cortina",
+        "espelho",
+        "arvore de natal",
+        "led decoracao",
+        "organizadora",
+        "organizadores",
+    ],
+    "Pets": [
+        "comedouro",
+        "bebedouro",
+        "gatos",
+        "caes",
+        "racao",
+        "pet",
+    ],
+    "Brinquedos": [
+        "brinquedo",
+        "squishy",
+        "boneca",
+        "carrinho infantil",
+    ],
+}
+
+
+def normalize_text(text):
+    """Remove acentos e padroniza o texto."""
+
+    text = unicodedata.normalize(
+        "NFKD",
+        str(text).lower()
+    )
+
+    text = "".join(
+        char for char in text
+        if not unicodedata.combining(char)
+    )
+
+    return re.sub(
+        r"\s+",
+        " ",
+        re.sub(r"[^a-z0-9]+", " ", text)
+    ).strip()
+
+
+def identify_category(title):
+    """
+    Identifica uma categoria aproximada pelo titulo.
+
+    Essa classificacao nao e uma categoria oficial
+    da Shopee.
+    """
+
+    normalized_title = normalize_text(title)
+
+    for category, keywords in CATEGORY_KEYWORDS.items():
+        for keyword in keywords:
+            normalized_keyword = normalize_text(keyword)
+
+            pattern = (
+                r"(?<![a-z0-9])"
+                + re.escape(normalized_keyword)
+                + r"(?![a-z0-9])"
+            )
+
+            if re.search(pattern, normalized_title):
+                return category
+
+    return "Outros"
+
+
+def select_diverse_offers(approved_offers, limit):
+    """
+    Seleciona ofertas com boa pontuacao e variedade.
+
+    Primeiro tenta escolher categorias diferentes.
+    Depois completa as vagas, caso necessario.
+    """
+
+    selected = []
+    selected_ids = set()
+    used_categories = set()
+
+    # Primeira passagem: categorias diferentes.
+    for offer in approved_offers:
+
+        if len(selected) >= limit:
+            break
+
+        category = offer.get("category", "Outros")
+
+        if category in used_categories:
+            continue
+
+        selected.append(offer)
+        selected_ids.add(offer["offer_id"])
+        used_categories.add(category)
+
+    # Segunda passagem: completa as vagas
+    # se nao houver categorias suficientes.
+    for offer in approved_offers:
+
+        if len(selected) >= limit:
+            break
+
+        if offer["offer_id"] in selected_ids:
+            continue
+
+        selected.append(offer)
+        selected_ids.add(offer["offer_id"])
+
+    return selected
+
+
 def process_offers():
-    """Busca, valida, classifica e prepara ofertas."""
+    """Busca, valida, pontua e prepara ofertas."""
 
     offers = get_all_offers()
-
     processed_offers = []
 
-    print(f"Total de ofertas encontradas: {len(offers)}")
+    print(
+        f"Total de ofertas encontradas: {len(offers)}"
+    )
 
     for offer in offers:
 
         try:
-            # Valida as informações da oferta
             validate_offer(offer)
 
             offer_id = offer["offer_id"]
 
-            # Impede ofertas duplicadas
             if is_already_published(offer_id):
                 print(
-                    f"Oferta já publicada: {offer['title']}"
+                    f"Oferta ja publicada: {offer['title']}"
                 )
                 continue
 
-            # Calcula a pontuação com os dados originais
             score = score_offer(offer)
-
-            # Formata a mensagem para o Telegram
             message = format_offer(offer)
 
-            # Preserva os campos usados na pontuação
+            category = identify_category(
+                offer["title"]
+            )
+
             processed_offers.append({
                 "offer_id": offer_id,
                 "title": offer["title"],
                 "score": score,
                 "message": message,
+                "category": category,
                 "marketplace": offer.get("marketplace"),
                 "current_price": offer.get("current_price"),
                 "original_price": offer.get("original_price"),
@@ -59,34 +260,44 @@ def process_offers():
 
             print(
                 f"Oferta processada: {offer['title']} "
-                f"| Pontuação: {score}"
+                f"| Nicho: {category} "
+                f"| Pontuacao: {score}"
             )
 
         except (ValueError, TypeError) as error:
             print(
-                f"Oferta inválida: "
-                f"{offer.get('title', 'Sem título')} | {error}"
+                f"Oferta invalida: "
+                f"{offer.get('title', 'Sem titulo')} "
+                f"| {error}"
             )
 
-    # Filtra ofertas com pontuação mínima de 40
+    # Filtra e ordena da maior para a menor pontuacao.
     approved_offers = filter_offers(
         processed_offers,
         minimum_score=40
     )
 
     print(
-        f"Ofertas aprovadas pelo filtro: "
-        f"{len(approved_offers)}"
+        "Ofertas aprovadas pelo filtro:",
+        len(approved_offers)
     )
 
-    # Seleciona no máximo 2 ofertas por execução
-    selected_offers = approved_offers[
-        :MAX_OFFERS_PER_CYCLE
-    ]
+    # Prioriza categorias diferentes.
+    selected_offers = select_diverse_offers(
+        approved_offers,
+        MAX_OFFERS_PER_CYCLE
+    )
 
     print(
-        f"Ofertas selecionadas para o ciclo: "
-        f"{len(selected_offers)}"
+        "Ofertas selecionadas para o ciclo:",
+        len(selected_offers)
     )
+
+    for offer in selected_offers:
+        print(
+            f"SELECIONADA: {offer['title']} "
+            f"| Nicho: {offer['category']} "
+            f"| Pontuacao: {offer['score']}"
+        )
 
     return selected_offers
