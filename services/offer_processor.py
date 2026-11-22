@@ -36,17 +36,25 @@ def process_offers():
                 )
                 continue
 
-            # Calcula a pontuação
+            # Calcula a pontuação com os dados originais
             score = score_offer(offer)
 
-            # Formata a mensagem
+            # Formata a mensagem para o Telegram
             message = format_offer(offer)
 
+            # Preserva os campos usados na pontuação
             processed_offers.append({
                 "offer_id": offer_id,
                 "title": offer["title"],
                 "score": score,
-                "message": message
+                "message": message,
+                "marketplace": offer.get("marketplace"),
+                "current_price": offer.get("current_price"),
+                "original_price": offer.get("original_price"),
+                "commission_rate": offer.get("commission_rate"),
+                "discount_rate": offer.get("discount_rate"),
+                "rating": offer.get("rating"),
+                "sales": offer.get("sales"),
             })
 
             print(
@@ -71,7 +79,7 @@ def process_offers():
         f"{len(approved_offers)}"
     )
 
-    # Seleciona no máximo 3 ofertas por execução
+    # Seleciona no máximo 2 ofertas por execução
     selected_offers = approved_offers[
         :MAX_OFFERS_PER_CYCLE
     ]
