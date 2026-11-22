@@ -22,33 +22,41 @@ def format_price(price):
 
 
 def format_offer(offer):
-    """Recebe os dados de uma oferta e gera uma mensagem para o Telegram."""
+    """Gera uma mensagem de oferta para o Telegram."""
 
     required_fields = [
         "title",
         "current_price",
         "marketplace",
-        "affiliate_url"
+        "affiliate_url",
     ]
 
-    # Verifica os campos obrigatórios
+    # Valida os campos obrigatórios.
     for field in required_fields:
         if offer.get(field) in (None, ""):
-            raise ValueError(f"Campo obrigatório não informado: {field}")
+            raise ValueError(
+                f"Campo obrigatório não informado: {field}"
+            )
 
     title = str(offer["title"]).strip()
     marketplace = str(offer["marketplace"]).strip()
-    affiliate_url = offer["affiliate_url"]
+    affiliate_url = str(offer["affiliate_url"]).strip()
 
-    if not title or not marketplace:
-        raise ValueError("Título e marketplace não podem estar vazios.")
+    if not title or not marketplace or not affiliate_url:
+        raise ValueError(
+            "Título, marketplace e link não podem estar vazios."
+        )
 
-    current_price = Decimal(str(offer["current_price"]))
+    try:
+        current_price = Decimal(str(offer["current_price"]))
+    except (InvalidOperation, ValueError, TypeError):
+        raise ValueError("O preço atual é inválido.")
 
     if not current_price.is_finite() or current_price <= 0:
-        raise ValueError("O preço atual deve ser maior que zero.")
+        raise ValueError(
+            "O preço atual deve ser maior que zero."
+        )
 
-    # Início da mensagem
     message = (
         "🔥 OFERTA ESPECIAL!\n\n"
         f"🛍️ {title}\n\n"
@@ -56,16 +64,19 @@ def format_offer(offer):
 
     original_price = offer.get("original_price")
 
-    # Exibe desconto somente quando os dois preços permitem calculá-lo
     if original_price is not None:
 
         try:
             original_price = Decimal(str(original_price))
         except (InvalidOperation, ValueError, TypeError):
-            raise ValueError("O preço original é inválido.")
+            raise ValueError(
+                "O preço original é inválido."
+            )
 
         if not original_price.is_finite() or original_price <= 0:
-            raise ValueError("O preço original deve ser maior que zero.")
+            raise ValueError(
+                "O preço original deve ser maior que zero."
+            )
 
         if original_price > current_price:
 
@@ -75,24 +86,25 @@ def format_offer(offer):
             ) * 100
 
             message += (
-                f"De: {format_price(original_price)}\n"
-                f"Por: {format_price(current_price)}\n"
+                f"❌ De: {format_price(original_price)}\n"
+                f"✅ Por: {format_price(current_price)}\n"
                 f"💥 Desconto de {discount:.0f}%!\n\n"
             )
 
         else:
             message += (
-                f"💰 Preço: {format_price(current_price)}\n\n"
+                f"✅ Por: {format_price(current_price)}\n\n"
             )
 
     else:
+        # Sem preço anterior confirmado:
+        # mostra somente o preço atual.
         message += (
-            f"💰 A partir de: {format_price(current_price)}\n\n"
+            f"✅ Por: {format_price(current_price)}\n\n"
         )
 
-    # Finalização da mensagem
     message += (
-        f"🏪 Marketplace: {marketplace}\n\n"
+        f"🏪 Loja: {marketplace}\n\n"
         "🛒 COMPRE AQUI:\n"
         f"{affiliate_url}\n\n"
         "⚡ Aproveite enquanto estiver disponível!"
